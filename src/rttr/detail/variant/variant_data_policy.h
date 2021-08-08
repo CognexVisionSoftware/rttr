@@ -494,7 +494,7 @@ struct variant_data_policy_big : variant_data_base_policy<T, variant_data_policy
     {
         delete &value;
     }
-
+RTTR_BEGIN_DISABLE_INIT_LIST_WARNING
     static RTTR_INLINE void clone(const T& value, variant_data& dest)
     {
         reinterpret_cast<T*&>(dest) = new T(value);
@@ -510,6 +510,7 @@ struct variant_data_policy_big : variant_data_base_policy<T, variant_data_policy
     {
         reinterpret_cast<T*&>(dest) = new T(std::forward<U>(value));
     }
+RTTR_END_DISABLE_INIT_LIST_WARNING
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
