@@ -508,17 +508,25 @@ void type_register_private::register_base_class_info(type_data* info)
     auto& class_data = info->m_class_data;
     auto base_classes(info->get_base_types(true));
 
+    // remove double entries; can only be happen for virtual inheritance case
+    set<type> double_entries;
+    for (auto itr = base_classes.rbegin(); itr != base_classes.rend();)
+    {
+        if (double_entries.find(itr->m_base_type) == double_entries.end())
+        {
+            double_entries.insert(itr->m_base_type);
+            ++itr;
+        }
+        else
+        {
+            itr = vector<base_class_info>::reverse_iterator(base_classes.erase((++itr).base()));
+        }
+    }
+
     // sort the base classes after it registration index, that means the root class is always the first in the list,
     // followed by its derived classes, here it depends on the order of RTTR_ENABLE(CLASS)
-    std::sort(base_classes.begin(), base_classes.end(), [](const base_class_info& left, const base_class_info& right){
-                // Enforce strict weak ordering.
-                return (left.m_base_type != right.m_base_type) && left.m_base_type.is_base_of(right.m_base_type);
-              });
-
-    // remove double entries; can only be happen for virtual inheritance case
-    base_classes.erase(std::unique(base_classes.begin(), base_classes.end(), [&](const auto& left, const auto& right){
-                         return left.m_base_type == right.m_base_type;
-                       }), base_classes.end());
+    std::sort(base_classes.begin(), base_classes.end(), [](const base_class_info& left, const base_class_info& right)
+                                                         { return left.m_base_type.is_base_of(right.m_base_type); });
 
     if (!base_classes.empty())
     {
