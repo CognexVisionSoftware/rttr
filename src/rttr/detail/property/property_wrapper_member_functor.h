@@ -25,30 +25,30 @@
 *                                                                                   *
 *************************************************************************************/
 
-#ifndef RTTR_PROPERTY_WRAPPER_FUNC_H_
-#define RTTR_PROPERTY_WRAPPER_FUNC_H_
+#ifndef RTTR_PROPERTY_WRAPPER_FUNCTOR_H_
+#define RTTR_PROPERTY_WRAPPER_FUNCTOR_H_
 
 /////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter/setter - function pointer
 
-template<typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, return_as_copy, set_value, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, Setter, Acc_Level, return_as_copy, set_value, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type   = typename function_traits<Getter>::return_type;
-    using arg_type      = typename param_types<Setter, 0>::type;
+    using arg_type      = typename param_types<Setter, 1>::type;
 
     public:
         property_wrapper(string_view name,
                          Getter get, Setter set,
                          std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_getter(get), m_setter(set)
         {
-            static_assert(function_traits<Getter>::arg_count == 0, "Invalid number of argument, please provide a getter-function without arguments.");
-            static_assert(function_traits<Setter>::arg_count == 1, "Invalid number of argument, please provide a setter-function with exactly one argument.");
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
+            static_assert(function_traits<Setter>::arg_count == 2, "Invalid number of argument, please provide a setter-functor with self and value arguments.");
             static_assert(std::is_same<return_type, arg_type>::value, "Please provide the same signature for getter and setter!");
 
             init();
@@ -57,16 +57,17 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
         access_levels get_access_level() const RTTR_NOEXCEPT    { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT                 { return true;  }
         bool is_readonly()  const RTTR_NOEXCEPT                 { return false; }
-        bool is_static()    const RTTR_NOEXCEPT                 { return true; }
+        bool is_static()    const RTTR_NOEXCEPT                 { return false; }
         type get_type()     const RTTR_NOEXCEPT                 { return type::get<return_type>(); }
 
         variant get_metadata(const variant& key) const { return metadata_handler<Metadata_Count>::get_metadata(key); }
 
         bool set_value(instance& object, argument& arg) const
         {
-            if (arg.is_type<arg_type>())
+            Declaring_Typ* ptr = object.try_convert<Declaring_Typ>();
+            if (ptr && arg.is_type<arg_type>())
             {
-                m_setter(arg.get_value<arg_type>());
+                m_setter(ptr, arg.get_value<arg_type>());
                 return true;
             }
             return false;
@@ -74,12 +75,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
 
         variant get_value(instance& object) const
         {
-            return variant(m_getter());
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return variant(m_getter(ptr));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_getter_setter_info<invalid_type, return_as_copy, Getter, Setter>(prop, m_getter, m_setter);
+            auto obj = make_property_getter_setter_info<Declaring_Typ, return_as_copy, Getter, Setter>(prop, m_getter, m_setter);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_getter_setter_visitor_invoker(obj));
         }
 
@@ -92,8 +96,8 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter
 
-template<typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, return_as_copy, read_only, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, void, Acc_Level, return_as_copy, read_only, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type = typename function_traits<Getter>::return_type;
@@ -101,11 +105,11 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
     public:
         property_wrapper(string_view name,
                          Getter get, std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_accessor(get)
         {
-            static_assert(function_traits<Getter>::arg_count == 0, "Invalid number of argument, please provide a getter-function without arguments.");
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
 
             init();
         }
@@ -113,7 +117,7 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
         access_levels get_access_level() const RTTR_NOEXCEPT    { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT                 { return true;  }
         bool is_readonly()  const RTTR_NOEXCEPT                 { return true; }
-        bool is_static()    const RTTR_NOEXCEPT                 { return true; }
+        bool is_static()    const RTTR_NOEXCEPT                 { return false; }
         type get_type()     const RTTR_NOEXCEPT                 { return type::get<return_type>(); }
         bool is_array()     const RTTR_NOEXCEPT                 { return std::is_array<return_type>::value; }
 
@@ -126,12 +130,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
 
         variant get_value(instance& object) const
         {
-            return (variant(m_accessor()));
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return variant(m_accessor(ptr));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_info<invalid_type, return_as_copy, Getter>(prop, m_accessor);
+            auto obj = make_property_info<Declaring_Typ, return_as_copy, Getter>(prop, m_accessor);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_visitor_invoker<read_only>(obj));
         }
 
@@ -145,26 +152,26 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter/setter
 
-template<typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, return_as_ptr, set_as_ptr, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, Setter, Acc_Level, return_as_ptr, set_as_ptr, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type   = typename function_traits<Getter>::return_type;
-    using arg_type      = typename param_types<Setter, 0>::type;
+    using arg_type      = typename param_types<Setter, 1>::type;
 
     public:
         property_wrapper(string_view name,
                          Getter get, Setter set,
                          std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_getter(get), m_setter(set)
         {
             static_assert(std::is_reference<return_type>::value, "Please provide a getter-function with a reference as return value!");
             static_assert(std::is_reference<arg_type>::value, "Please provide a setter-function with a reference as argument!");
 
-            static_assert(function_traits<Getter>::arg_count == 0, "Invalid number of argument, please provide a getter-function without arguments.");
-            static_assert(function_traits<Setter>::arg_count == 1, "Invalid number of argument, please provide a setter-function with exactly one argument.");
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
+            static_assert(function_traits<Setter>::arg_count == 2, "Invalid number of argument, please provide a setter-functor with self and value arguments.");
 
             static_assert(std::is_same<return_type, arg_type>::value, "Please provide the same signature for getter and setter!");
 
@@ -174,17 +181,18 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
         access_levels get_access_level() const RTTR_NOEXCEPT    { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT                 { return true;  }
         bool is_readonly()  const RTTR_NOEXCEPT                 { return false; }
-        bool is_static()    const RTTR_NOEXCEPT                 { return true; }
+        bool is_static()    const RTTR_NOEXCEPT                 { return false; }
         type get_type()     const RTTR_NOEXCEPT                 { return type::get<typename std::remove_reference<return_type>::type*>(); }
 
         variant get_metadata(const variant& key) const { return metadata_handler<Metadata_Count>::get_metadata(key); }
 
         bool set_value(instance& object, argument& arg) const
         {
+            Declaring_Typ* ptr = object.try_convert<Declaring_Typ>();
             using arg_type_t = remove_reference_t<arg_type>;
-            if (arg.is_type<arg_type_t*>())
+            if (ptr && arg.is_type<arg_type_t*>())
             {
-                m_setter(*arg.get_value<arg_type_t*>());
+                m_setter(ptr, *arg.get_value<arg_type_t*>());
                 return true;
             }
             return false;
@@ -192,12 +200,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
 
         variant get_value(instance& object) const
         {
-            return variant(&(m_getter()));
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return variant(&(m_getter(ptr)));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_getter_setter_info<invalid_type, return_as_ptr, Getter, Setter>(prop, m_getter, m_setter);
+            auto obj = make_property_getter_setter_info<Declaring_Typ, return_as_ptr, Getter, Setter>(prop, m_getter, m_setter);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_getter_setter_visitor_invoker(obj));
         }
 
@@ -210,18 +221,19 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, re
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter
 
-template<typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, return_as_ptr, read_only, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, void, Acc_Level, return_as_ptr, read_only, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type = typename function_traits<Getter>::return_type;
     public:
         property_wrapper(string_view name,
                          Getter get, std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_accessor(get)
         {
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
             static_assert(std::is_reference<return_type>::value, "Please provide a function with a reference as return value!");
 
             init();
@@ -230,7 +242,7 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
         access_levels get_access_level() const RTTR_NOEXCEPT { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT { return true;  }
         bool is_readonly()  const RTTR_NOEXCEPT { return true; }
-        bool is_static()    const RTTR_NOEXCEPT { return true; }
+        bool is_static()    const RTTR_NOEXCEPT { return false; }
         type get_type()     const RTTR_NOEXCEPT { return type::get<typename std::add_const<typename std::remove_reference<return_type>::type>::type*>(); }
 
         variant get_metadata(const variant& key) const { return metadata_handler<Metadata_Count>::get_metadata(key); }
@@ -242,12 +254,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
 
         variant get_value(instance& object) const
         {
-            return (variant(const_cast<const typename std::remove_reference<return_type>::type*>(&(m_accessor()))));
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return (variant(const_cast<const typename std::remove_reference<return_type>::type*>(&(m_accessor(ptr)))));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_info<invalid_type, return_as_copy, Getter>(prop, m_accessor);
+            auto obj = make_property_info<Declaring_Typ, return_as_copy, Getter>(prop, m_accessor);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_visitor_invoker<read_only>(obj));
         }
 
@@ -259,26 +274,26 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, retu
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter/setter
 
-template<typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, get_as_ref_wrapper, set_as_ref_wrapper, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, typename Setter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, Setter, Acc_Level, get_as_ref_wrapper, set_as_ref_wrapper, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type   = typename function_traits<Getter>::return_type;
-    using arg_type      = typename param_types<Setter, 0>::type;
+    using arg_type      = typename param_types<Setter, 1>::type;
 
     public:
         property_wrapper(string_view name,
                          Getter get, Setter set,
                          std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_getter(get), m_setter(set)
         {
             static_assert(std::is_reference<return_type>::value, "Please provide a getter-function with a reference as return value!");
             static_assert(std::is_reference<arg_type>::value, "Please provide a setter-function with a reference as argument!");
 
-            static_assert(function_traits<Getter>::arg_count == 0, "Invalid number of argument, please provide a getter-function without arguments.");
-            static_assert(function_traits<Setter>::arg_count == 1, "Invalid number of argument, please provide a setter-function with exactly one argument.");
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
+            static_assert(function_traits<Setter>::arg_count == 2, "Invalid number of argument, please provide a setter-functor with self and value arguments.");
 
             static_assert(std::is_same<return_type, arg_type>::value, "Please provide the same signature for getter and setter!");
 
@@ -288,17 +303,18 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, ge
         access_levels get_access_level() const RTTR_NOEXCEPT    { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT                 { return true;  }
         bool is_readonly()  const RTTR_NOEXCEPT                 { return false; }
-        bool is_static()    const RTTR_NOEXCEPT                 { return true; }
+        bool is_static()    const RTTR_NOEXCEPT                 { return false; }
         type get_type()     const RTTR_NOEXCEPT                 { return type::get< std::reference_wrapper<remove_reference_t<return_type>> >(); }
 
         variant get_metadata(const variant& key) const { return metadata_handler<Metadata_Count>::get_metadata(key); }
 
         bool set_value(instance& object, argument& arg) const
         {
+            Declaring_Typ* ptr = object.try_convert<Declaring_Typ>();
             using arg_type_t = remove_reference_t<arg_type>;
-            if (arg.is_type<std::reference_wrapper<arg_type_t>>())
+            if (ptr && arg.is_type<std::reference_wrapper<arg_type_t>>())
             {
-                m_setter(arg.get_value<std::reference_wrapper<arg_type_t>>().get());
+                m_setter(ptr, arg.get_value<std::reference_wrapper<arg_type_t>>().get());
                 return true;
             }
             return false;
@@ -306,12 +322,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, ge
 
         variant get_value(instance& object) const
         {
-            return variant(std::ref(m_getter()));
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return variant(std::ref(m_getter(ptr)));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_getter_setter_info<invalid_type, get_as_ref_wrapper, Getter, Setter>(prop, m_getter, m_setter);
+            auto obj = make_property_getter_setter_info<Declaring_Typ, get_as_ref_wrapper, Getter, Setter>(prop, m_getter, m_setter);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_getter_setter_visitor_invoker(obj));
         }
 
@@ -324,8 +343,8 @@ class property_wrapper<function_ptr, invalid_type, Getter, Setter, Acc_Level, ge
 /////////////////////////////////////////////////////////////////////////////////////////
 // global function getter
 
-template<typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
-class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, get_as_ref_wrapper, read_only, Metadata_Count, Visitor_List>
+template<typename Declaring_Typ, typename Getter, access_levels Acc_Level, std::size_t Metadata_Count, typename Visitor_List>
+class property_wrapper<function_ptr, Declaring_Typ, Getter, void, Acc_Level, get_as_ref_wrapper, read_only, Metadata_Count, Visitor_List>
     : public property_wrapper_base, public metadata_handler<Metadata_Count>
 {
     using return_type = typename function_traits<Getter>::return_type;
@@ -334,10 +353,11 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, get_
     public:
         property_wrapper(string_view name,
                          Getter get, std::array<metadata, Metadata_Count> metadata_list) RTTR_NOEXCEPT
-        :   property_wrapper_base(name, type::get<invalid_type>()),
+        :   property_wrapper_base(name, type::get<Declaring_Typ>()),
             metadata_handler<Metadata_Count>(std::move(metadata_list)),
             m_accessor(get)
         {
+            static_assert(function_traits<Getter>::arg_count == 1, "Invalid number of argument, please provide a getter-functor with a self argument.");
             static_assert(std::is_reference<return_type>::value, "Please provide a function with a reference as return value!");
 
             init();
@@ -346,7 +366,7 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, get_
         access_levels get_access_level() const RTTR_NOEXCEPT { return Acc_Level; }
         bool is_valid()     const RTTR_NOEXCEPT { return true; }
         bool is_readonly()  const RTTR_NOEXCEPT { return true; }
-        bool is_static()    const RTTR_NOEXCEPT { return true; }
+        bool is_static()    const RTTR_NOEXCEPT { return false; }
         type get_type()     const RTTR_NOEXCEPT { return type::get<policy_type>(); }
 
         variant get_metadata(const variant& key) const { return metadata_handler<Metadata_Count>::get_metadata(key); }
@@ -358,12 +378,15 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, get_
 
         variant get_value(instance& object) const
         {
-            return variant(std::cref(m_accessor()));
+            if (Declaring_Typ* ptr = object.try_convert<Declaring_Typ>())
+                return variant(std::cref(m_accessor(ptr)));
+            else
+                return variant();
         }
 
         void visit(visitor& visitor, property prop) const RTTR_NOEXCEPT
         {
-            auto obj = make_property_info<invalid_type, return_as_copy, Getter>(prop, m_accessor);
+            auto obj = make_property_info<Declaring_Typ, return_as_copy, Getter>(prop, m_accessor);
             visitor_iterator<Visitor_List>::visit(visitor, make_property_visitor_invoker<read_only>(obj));
         }
 
@@ -372,4 +395,4 @@ class property_wrapper<function_ptr, invalid_type, Getter, void, Acc_Level, get_
 };
 
 
-#endif // RTTR_PROPERTY_WRAPPER_FUNC_H_
+#endif // RTTR_PROPERTY_WRAPPER_FUNCTOR_H_
