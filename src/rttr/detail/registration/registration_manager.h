@@ -49,7 +49,7 @@ namespace detail
  * This class saves the registration of all possible items per module (*.DLL, *.so, ...)
  * and will undo the registration when the instance is destroyed.
  */
-class RTTR_LOCAL registration_manager
+class RTTR_API registration_manager
 {
     public:
         registration_manager()
@@ -209,7 +209,7 @@ class RTTR_LOCAL registration_manager
 /////////////////////////////////////////////////////////////////////////////////////////
 
 
-RTTR_LOCAL RTTR_INLINE registration_manager& get_registration_manager() RTTR_NOEXCEPT
+RTTR_API RTTR_INLINE registration_manager& get_registration_manager() RTTR_NOEXCEPT
 {
     static registration_manager obj;
     return obj;
